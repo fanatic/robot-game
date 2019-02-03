@@ -1,0 +1,65 @@
+.App {
+  text-align: center;
+}
+
+.App-header {
+  background-color: #282c34;
+  color: white;
+}
+
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: auto;
+  width: 700px;
+}
+
+.App-header h1 {
+  flex: 1;
+}
+
+.App-header table {
+  flex: 1;
+  margin: 30px;
+}
+
+.grid {
+  margin: auto;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  width: 512px;
+  height: 512px;
+  background-color: black;
+  position: relative;
+}
+
+.cell {
+  margin: 1px;
+  padding: 0;
+  height: 30px;
+  width: 30px;
+  float: left;
+  background-color: white;
+}
+
+.robot {
+  position: absolute;
+  margin-top: 8px;
+  margin-left: 3px;
+  border-bottom: 18px solid;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  height: 0;
+  width: 18px;
+  font-size: 12px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.arrow {
+  margin: 4px 8px;
+  position: absolute;
+  font-size: 22px;
+  text-align: center;
+}
