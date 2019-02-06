@@ -35,16 +35,19 @@ class App extends Component {
 }
 
 export default connect(props => ({
-  //fetchState: `/state`
   fetchState: {
-    value: {
-      round: 1,
-      grid: 16,
-      robots: [
-        { x: 1, y: 0, color: '#e6194b', name: 'JP', direction: 1, vision: 4, score: 1000 },
-        { x: 5, y: 2, color: '#3cb44b', name: 'HP', direction: 3, vision: 8, score: 10 },
-        { x: 10, y: 10, color: '#ff00ff', name: 'JW', direction: 3, vision: 4, score: 50 }
-      ]
-    }
+    url: `/state`,
+    refreshInterval: 1000
   }
+  // fetchState: {
+  //   value: {
+  //     round: 1,
+  //     grid: 16,
+  //     robots: [
+  //       { x: 1, y: 0, color: '#e6194b', name: 'JP', direction: 1, vision: 4, score: 1000 },
+  //       { x: 5, y: 2, color: '#3cb44b', name: 'HP', direction: 3, vision: 8, score: 10 },
+  //       { x: 10, y: 10, color: '#ff00ff', name: 'JW', direction: 3, vision: 4, score: 50 }
+  //     ]
+  //   }
+  // }
 }))(App);

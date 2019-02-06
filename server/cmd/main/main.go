@@ -8,7 +8,12 @@ import (
 )
 
 func main() {
-	r, err := server.New()
+	s, err := server.NewState("my.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	r, err := server.New(s)
 	if err != nil {
 		log.Fatal(err)
 	}

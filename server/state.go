@@ -16,8 +16,8 @@ type State struct {
 	db     *storm.DB
 }
 
-func NewState() (*State, error) {
-	db, err := storm.Open("my.db")
+func NewState(dbPath string) (*State, error) {
+	db, err := storm.Open(dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -25,10 +25,14 @@ func NewState() (*State, error) {
 	return s.RefreshState()
 }
 
+func (s *State) Close() error {
+	return s.db.Close()
+}
+
 type Robot struct {
 	ID        string    `json:"id,omitempty"` // also the secret
 	CreatedAt time.Time `json:"created_at"`
-	Name      string    `json:"name" storm:"unique"`
+	Name      string    `json:"name"`
 	X         int       `json:"x"`
 	Y         int       `json:"y"`
 	Color     string    `json:"color"`
@@ -47,6 +51,7 @@ func (s *State) NewRobot(name string) (*Robot, error) {
 	id, _ := uuid.NewRandom()
 	r := Robot{
 		ID:        id.String(),
+		CreatedAt: time.Now(),
 		X:         x,
 		Y:         y,
 		Color:     colors[len(s.Robots)%len(colors)],
@@ -56,7 +61,7 @@ func (s *State) NewRobot(name string) (*Robot, error) {
 		Score:     0,
 	}
 
-	err := s.db.From("robots").Save(r)
+	err := s.db.Save(&r)
 	return &r, err
 }
 
@@ -68,25 +73,30 @@ const (
 )
 
 func (s *State) RefreshState() (*State, error) {
-	var state State
-	if err := s.db.From("state").Select().First(&state); err != nil && err != storm.ErrNotFound {
+	var st []State
+	if err := s.db.All(&st); err != nil && err != storm.ErrNotFound {
 		return nil, err
 	}
+	var state State
+	if len(st) == 1 {
+		state = st[0]
+	}
 
-	var robots []Robot
-	if err := s.db.From("robots").Select().Find(&robots); err != nil && err != storm.ErrNotFound {
+	var robots = make([]Robot, 0, 0)
+	if err := s.db.All(&robots); err != nil && err != storm.ErrNotFound {
 		return nil, err
 	}
 
 	state.Grid = 16
 	state.Robots = robots
+	state.db = s.db
 
 	return &state, nil
 }
 
 func (s *State) Robot(id string) (*Robot, error) {
 	var r Robot
-	if err := s.db.From("robots").One("id", id, &r); err != nil {
+	if err := s.db.One("ID", id, &r); err != nil {
 		return nil, err
 	}
 
@@ -98,7 +108,7 @@ func (s *State) Robot(id string) (*Robot, error) {
 }
 
 func (s *State) DeleteRobot(id string) error {
-	return s.db.From("robots").DeleteStruct(Robot{ID: id})
+	return s.db.DeleteStruct(Robot{ID: id})
 }
 
 func (s *State) Move(id string) error {
@@ -112,22 +122,22 @@ func (s *State) Move(id string) error {
 		if r.Y-1 < 0 {
 			return fmt.Errorf("off the grid")
 		}
-		return s.db.UpdateField(r, "y", r.Y-1)
+		return s.db.UpdateField(r, "Y", r.Y-1)
 	case East:
 		if r.X+1 == s.Grid {
 			return fmt.Errorf("off the grid")
 		}
-		return s.db.UpdateField(r, "x", r.X+1)
+		return s.db.UpdateField(r, "X", r.X+1)
 	case South:
 		if r.Y+1 == s.Grid {
 			return fmt.Errorf("off the grid")
 		}
-		return s.db.UpdateField(r, "y", r.Y+1)
+		return s.db.UpdateField(r, "Y", r.Y+1)
 	case West:
 		if r.X-1 < 0 {
 			return fmt.Errorf("off the grid")
 		}
-		return s.db.UpdateField(r, "x", r.X-1)
+		return s.db.UpdateField(r, "X", r.X-1)
 	}
 	return fmt.Errorf("unknown direction")
 }
@@ -140,13 +150,13 @@ func (s *State) Turn(id string, direction bool) error {
 
 	switch {
 	case (r.Direction == North && direction) || (r.Direction == South && !direction):
-		return s.db.UpdateField(r, "direction", West)
+		return s.db.UpdateField(r, "Direction", West)
 	case (r.Direction == East && direction) || (r.Direction == West && !direction):
-		return s.db.UpdateField(r, "direction", North)
+		return s.db.UpdateField(r, "Direction", North)
 	case (r.Direction == South && direction) || (r.Direction == North && !direction):
-		return s.db.UpdateField(r, "direction", East)
+		return s.db.UpdateField(r, "Direction", East)
 	case (r.Direction == West && direction) || (r.Direction == East && !direction):
-		return s.db.UpdateField(r, "direction", South)
+		return s.db.UpdateField(r, "Direction", South)
 	}
 	return fmt.Errorf("unknown direction")
 }
@@ -178,13 +188,13 @@ func (s *State) Attack(id string) error {
 		if robot.Dead {
 			return fmt.Errorf("how rude to attack a dead robot")
 		}
-		if err := s.db.UpdateField(r, "score", r.Score+10); err != nil {
+		if err := s.db.UpdateField(r, "Score", r.Score+10); err != nil {
 			return err
 		}
-		return s.db.UpdateField(robot, "dead", true)
+		return s.db.UpdateField(robot, "Dead", true)
 	}
 
-	return nil
+	return fmt.Errorf("swwwing and a missss")
 }
 
 func (s *State) locateRobot(x, y int) *Robot {

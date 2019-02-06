@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -17,123 +18,140 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-type f func(w http.ResponseWriter, r *http.Request)
-
-func getState(s *State) f {
-	return func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(s)
+func getState(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
+	st, err := s.RefreshState()
+	if err != nil {
+		return nil, err
 	}
+	for i := range st.Robots {
+		st.Robots[i].ID = ""
+	}
+	return st, nil
 }
 
-func postRobot(s *State) f {
-	return func(w http.ResponseWriter, r *http.Request) {
-		payload := struct {
-			Name string `json:"name"`
-		}{}
-		json.NewDecoder(r.Body).Decode(&payload)
-
-		robot, err := s.NewRobot(payload.Name)
-		if err != nil {
-			json.NewEncoder(w).Encode(err)
-		}
-		json.NewEncoder(w).Encode(robot)
+func postRobot(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
+	payload := struct {
+		Name string `json:"name"`
+	}{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("invalid payload body {\"name\": \"JP\"}")
 	}
-}
 
-func deleteRobot(s *State) f {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := mux.Vars(r)["id"]
-
-		err := s.DeleteRobot(id)
-		if err != nil {
-			json.NewEncoder(w).Encode(err)
-		}
-		w.WriteHeader(204)
-	}
-}
-
-func getRobot(s *State) f {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := mux.Vars(r)["id"]
-
-		robot, err := s.Robot(id)
-		if err != nil {
-			json.NewEncoder(w).Encode(err)
-		}
-		json.NewEncoder(w).Encode(robot)
-	}
-}
-
-func postMove(s *State) f {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := mux.Vars(r)["id"]
-
-		if err := s.Move(id); err != nil {
-			json.NewEncoder(w).Encode(err)
-		}
-
-		robot, err := s.Robot(id)
-		if err != nil {
-			json.NewEncoder(w).Encode(err)
-		}
-		json.NewEncoder(w).Encode(robot)
-	}
-}
-
-func postTurn(s *State) f {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := mux.Vars(r)["id"]
-
-		payload := struct {
-			Direction bool `json:"direction"`
-		}{}
-		json.NewDecoder(r.Body).Decode(&payload)
-
-		if err := s.Turn(id, payload.Direction); err != nil {
-			json.NewEncoder(w).Encode(err)
-		}
-
-		robot, err := s.Robot(id)
-		if err != nil {
-			json.NewEncoder(w).Encode(err)
-		}
-		json.NewEncoder(w).Encode(robot)
-	}
-}
-
-func postAttack(s *State) f {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := mux.Vars(r)["id"]
-
-		if err := s.Attack(id); err != nil {
-			json.NewEncoder(w).Encode(err)
-		}
-
-		robot, err := s.Robot(id)
-		if err != nil {
-			json.NewEncoder(w).Encode(err)
-		}
-		json.NewEncoder(w).Encode(robot)
-	}
-}
-
-func New() (http.Handler, error) {
-	s, err := NewState()
+	robot, err := s.NewRobot(payload.Name)
 	if err != nil {
 		return nil, err
 	}
 
+	return robot, nil
+}
+
+func deleteRobot(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
+	id := mux.Vars(r)["id"]
+
+	err := s.DeleteRobot(id)
+	if err != nil {
+		return nil, err
+	}
+
+	w.WriteHeader(204)
+	return nil, nil
+}
+
+func getRobot(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
+	id := mux.Vars(r)["id"]
+
+	robot, err := s.Robot(id)
+	if err != nil {
+		json.NewEncoder(w).Encode(err)
+	}
+	return robot, nil
+}
+
+func postMove(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
+	id := mux.Vars(r)["id"]
+
+	if err := s.Move(id); err != nil {
+		return nil, err
+	}
+
+	robot, err := s.Robot(id)
+	if err != nil {
+		return nil, err
+	}
+	return robot, nil
+}
+
+func postTurn(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
+	id := mux.Vars(r)["id"]
+
+	payload := struct {
+		Direction bool `json:"direction"`
+	}{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("invalid payload body {\"direction\": true}")
+	}
+
+	if err := s.Turn(id, payload.Direction); err != nil {
+		return nil, err
+	}
+
+	robot, err := s.Robot(id)
+	if err != nil {
+		return nil, err
+	}
+	return robot, nil
+}
+
+func postAttack(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
+	id := mux.Vars(r)["id"]
+
+	if err := s.Attack(id); err != nil {
+		return nil, err
+	}
+
+	robot, err := s.Robot(id)
+	if err != nil {
+		return nil, err
+	}
+	return robot, nil
+}
+
+type f func(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error)
+type hf func(w http.ResponseWriter, r *http.Request)
+
+func handlerWrapper(s *State, f f) hf {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+
+		m, err := f(s, w, r)
+		if err != nil {
+			log.Println(err)
+			json.NewEncoder(w).Encode(map[string]string{"at": "error", "msg": err.Error()})
+			return
+		}
+		if err := json.NewEncoder(w).Encode(m); err != nil {
+			log.Println(err)
+			json.NewEncoder(w).Encode(map[string]string{"at": "error", "msg": err.Error()})
+			return
+		}
+
+		return
+	}
+}
+
+func New(s *State) (http.Handler, error) {
 	r := mux.NewRouter()
 	r.Use(loggingMiddleware)
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("../client/build")))
 
-	r.HandleFunc("/state"+password, getState(s)).Methods("GET")
-	r.HandleFunc("/robot", postRobot(s)).Methods("POST")
-	r.HandleFunc("/robot/{id}", getRobot(s)).Methods("GET")
-	r.HandleFunc("/robot/{id}/move", postMove(s)).Methods("POST")
-	r.HandleFunc("/robot/{id}/turn", postTurn(s)).Methods("POST")
-	r.HandleFunc("/robot/{id}/attack", postAttack(s)).Methods("POST")
-	r.HandleFunc("/robot/{id}", deleteRobot(s)).Methods("DELETE")
+	r.HandleFunc("/state"+password, handlerWrapper(s, getState)).Methods("GET")
+	r.HandleFunc("/robots", handlerWrapper(s, postRobot)).Methods("POST")
+	r.HandleFunc("/robots/{id}", handlerWrapper(s, getRobot)).Methods("GET")
+	r.HandleFunc("/robots/{id}/move", handlerWrapper(s, postMove)).Methods("POST")
+	r.HandleFunc("/robots/{id}/turn", handlerWrapper(s, postTurn)).Methods("POST")
+	r.HandleFunc("/robots/{id}/attack", handlerWrapper(s, postAttack)).Methods("POST")
+	r.HandleFunc("/robots/{id}", handlerWrapper(s, deleteRobot)).Methods("DELETE")
+
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("../client/build")))
 
 	return r, nil
 }
