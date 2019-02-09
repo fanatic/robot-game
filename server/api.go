@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -13,8 +14,17 @@ const password = ""
 
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Println(r.RequestURI)
+		if r.RequestURI == "/state" && r.Method == "GET" {
+			// Skip logging
+			next.ServeHTTP(w, r)
+			return
+		}
+		log.Printf("http at=start  method=%s path=%s\n", r.Method, r.RequestURI)
+		startTime := time.Now()
+
 		next.ServeHTTP(w, r)
+
+		log.Printf("http at=finish method=%s path=%s duration=%s\n", r.Method, r.RequestURI, time.Since(startTime))
 	})
 }
 
@@ -129,13 +139,13 @@ func handlerWrapper(s *State, f f) hf {
 			json.NewEncoder(w).Encode(map[string]string{"at": "error", "msg": err.Error()})
 			return
 		}
-		if err := json.NewEncoder(w).Encode(m); err != nil {
-			log.Println(err)
-			json.NewEncoder(w).Encode(map[string]string{"at": "error", "msg": err.Error()})
-			return
+		if m != nil {
+			if err := json.NewEncoder(w).Encode(m); err != nil {
+				log.Println(err)
+				json.NewEncoder(w).Encode(map[string]string{"at": "error", "msg": err.Error()})
+				return
+			}
 		}
-
-		return
 	}
 }
 

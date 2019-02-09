@@ -1,19 +1,26 @@
 package server
 
 import (
-	"fmt"
 	"math/rand"
 	"time"
 
 	"github.com/asdine/storm"
-	"github.com/google/uuid"
 )
 
+//const initialDelay = 30 * time.Second
+const initialDelay = time.Second
+
 type State struct {
-	Round  int     `json:"round"`
-	Grid   int     `json:"grid"`
-	Robots []Robot `json:"robots"`
-	db     *storm.DB
+	// Saved values
+	ID    int `json:"-"`
+	Round int `json:"round"`
+
+	// Values not saved
+	Grid              int           `json:"grid"`
+	CurrentDelay      time.Duration `json:"delay"`
+	CurrentRobotLimit int           `json:"robot_limit"`
+	Robots            []Robot       `json:"robots"`
+	db                *storm.DB
 }
 
 func NewState(dbPath string) (*State, error) {
@@ -28,49 +35,6 @@ func NewState(dbPath string) (*State, error) {
 func (s *State) Close() error {
 	return s.db.Close()
 }
-
-type Robot struct {
-	ID        string    `json:"id,omitempty"` // also the secret
-	CreatedAt time.Time `json:"created_at"`
-	Name      string    `json:"name"`
-	X         int       `json:"x"`
-	Y         int       `json:"y"`
-	Color     string    `json:"color"`
-	Direction int       `json:"direction"`
-	Vision    int       `json:"vision"`
-	Score     int       `json:"score"`
-	Dead      bool      `json:"dead"`
-}
-
-func (s *State) NewRobot(name string) (*Robot, error) {
-	colors := []string{"#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#46f0f0", "#f032e6", "#bcf60c", "#fabebe", "#008080", "#e6beff", "#9a6324", "#fffac8", "#800000", "#aaffc3", "#808000", "#ffd8b1", "#000075", "#808080", "#ffffff", "#000000"}
-
-	x := rand.Intn(s.Grid)
-	y := rand.Intn(s.Grid)
-	direction := rand.Intn(4)
-	id, _ := uuid.NewRandom()
-	r := Robot{
-		ID:        id.String(),
-		CreatedAt: time.Now(),
-		X:         x,
-		Y:         y,
-		Color:     colors[len(s.Robots)%len(colors)],
-		Name:      name,
-		Direction: direction,
-		Vision:    4,
-		Score:     0,
-	}
-
-	err := s.db.Save(&r)
-	return &r, err
-}
-
-const (
-	North = iota
-	East
-	South
-	West
-)
 
 func (s *State) RefreshState() (*State, error) {
 	var st []State
@@ -91,118 +55,79 @@ func (s *State) RefreshState() (*State, error) {
 	state.Robots = robots
 	state.db = s.db
 
+	// Calculate delay
+	delay := initialDelay
+	for i := 0; i < state.Round; i++ {
+		delay /= 2
+	}
+	if delay < 2*time.Millisecond {
+		delay = 2 * time.Millisecond
+	}
+	state.CurrentDelay = delay
+
+	// Calculate robot limit
+	state.CurrentRobotLimit = int(state.Round / 2)
+	if state.CurrentRobotLimit <= 0 {
+		state.CurrentRobotLimit = 1
+	} else if state.CurrentRobotLimit > 5 {
+		state.CurrentRobotLimit = 5
+	}
+
 	return &state, nil
 }
 
-func (s *State) Robot(id string) (*Robot, error) {
-	var r Robot
-	if err := s.db.One("ID", id, &r); err != nil {
-		return nil, err
-	}
-
-	if r.Dead {
-		return nil, fmt.Errorf("this robot be dead")
-	}
-
-	return &r, nil
-}
-
-func (s *State) DeleteRobot(id string) error {
-	return s.db.DeleteStruct(Robot{ID: id})
-}
-
-func (s *State) Move(id string) error {
-	r, err := s.Robot(id)
-	if err != nil {
-		return err
-	}
-
-	switch r.Direction {
-	case North:
-		if r.Y-1 < 0 {
-			return fmt.Errorf("off the grid")
-		}
-		return s.db.UpdateField(r, "Y", r.Y-1)
-	case East:
-		if r.X+1 == s.Grid {
-			return fmt.Errorf("off the grid")
-		}
-		return s.db.UpdateField(r, "X", r.X+1)
-	case South:
-		if r.Y+1 == s.Grid {
-			return fmt.Errorf("off the grid")
-		}
-		return s.db.UpdateField(r, "Y", r.Y+1)
-	case West:
-		if r.X-1 < 0 {
-			return fmt.Errorf("off the grid")
-		}
-		return s.db.UpdateField(r, "X", r.X-1)
-	}
-	return fmt.Errorf("unknown direction")
-}
-
-func (s *State) Turn(id string, direction bool) error {
-	r, err := s.Robot(id)
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case (r.Direction == North && direction) || (r.Direction == South && !direction):
-		return s.db.UpdateField(r, "Direction", West)
-	case (r.Direction == East && direction) || (r.Direction == West && !direction):
-		return s.db.UpdateField(r, "Direction", North)
-	case (r.Direction == South && direction) || (r.Direction == North && !direction):
-		return s.db.UpdateField(r, "Direction", East)
-	case (r.Direction == West && direction) || (r.Direction == East && !direction):
-		return s.db.UpdateField(r, "Direction", South)
-	}
-	return fmt.Errorf("unknown direction")
-}
-
-func (s *State) Attack(id string) error {
-	r, err := s.Robot(id)
-	if err != nil {
-		return err
-	}
-
+func (s *State) UpdateRound() error {
 	newState, err := s.RefreshState()
 	if err != nil {
 		return err
 	}
 
-	var robot *Robot
-	switch r.Direction {
-	case North:
-		robot = newState.locateRobot(r.X, r.Y-1)
-	case East:
-		robot = newState.locateRobot(r.X+1, r.Y)
-	case South:
-		robot = newState.locateRobot(r.X, r.Y+1)
-	case West:
-		robot = newState.locateRobot(r.X-1, r.Y)
+	if len(newState.Robots) <= 1 {
+		return nil
 	}
 
-	if robot != nil {
-		if robot.Dead {
-			return fmt.Errorf("how rude to attack a dead robot")
+	// Slice of robots still alive
+	alive := []Robot{}
+	for _, robot := range newState.Robots {
+		if !robot.Dead {
+			alive = append(alive, robot)
 		}
-		if err := s.db.UpdateField(r, "Score", r.Score+10); err != nil {
+	}
+	if len(alive) != 1 {
+		return nil
+	}
+
+	// Round Over!
+
+	newState.ID = 1 // hardcode id so there can only be one state
+	newState.Round = newState.Round + 1
+	if err := s.db.Save(newState); err != nil {
+		return err
+	}
+
+	for _, robot := range newState.Robots {
+		robot.Dead = false // see next comment
+		robot.X = rand.Intn(newState.Grid)
+		robot.Y = rand.Intn(newState.Grid)
+		robot.Direction = rand.Intn(4)
+		if robot.ID == alive[0].ID {
+			// Winner Winner, Chicken Dinner
+			robot.Score += 100
+		}
+		if err := s.db.Update(&robot); err != nil {
 			return err
 		}
-		return s.db.UpdateField(robot, "Dead", true)
-	}
-
-	return fmt.Errorf("swwwing and a missss")
-}
-
-func (s *State) locateRobot(x, y int) *Robot {
-	for _, robot := range s.Robots {
-		if robot.X == x && robot.Y == y {
-			return &robot
+		// Update won't save zero-value fields, so do it explicitly for dead and ignore issues with x/y/direction being 0
+		if err := s.db.UpdateField(&robot, "Dead", false); err != nil {
+			return err
 		}
 	}
+
+	newState, err = s.RefreshState()
+	if err != nil {
+		return err
+	}
+	*s = *newState
 
 	return nil
 }

@@ -6,9 +6,10 @@ export default class Grid extends Component {
 
     let visionCells = {};
 
-    const arrows = [[0, -1], [1, 0], [0, 1], [-1, 0]];
-
     robots.forEach(r => {
+      if (r.dead) {
+        return;
+      }
       switch (r.vision) {
         case 8:
           visionCells[`${r.x - 1}-${r.y - 1}`] = true;

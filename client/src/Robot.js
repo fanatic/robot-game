@@ -2,13 +2,17 @@ import React, { Component } from 'react';
 
 export default class Robot extends Component {
   render() {
-    const { x, y, color, name, direction } = this.props;
+    const { x, y, color, name, direction, dead } = this.props;
     const style = {
       left: 32 * x,
       top: 32 * y,
       borderBottomColor: color
     };
     const arrows = [['↑', 0, -1], ['→', 1, 0], ['↓', 0, 1], ['←', -1, 0]];
+
+    if (dead) {
+      return <React.Fragment />;
+    }
     return (
       <React.Fragment>
         <div className="robot" style={style}>

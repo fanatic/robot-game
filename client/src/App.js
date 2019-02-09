@@ -15,11 +15,25 @@ class App extends Component {
 
     const state = fetchState.value;
 
+    function msToTime(duration) {
+      duration = duration / 1000 / 1000; // ns -> ms
+      var milliseconds = parseInt(duration % 1000),
+        seconds = parseInt((duration / 1000) % 60);
+
+      // left pad milliseconds
+      milliseconds = Array(Math.max(3 - String(milliseconds).length + 1, 0)).join(0) + milliseconds;
+
+      return seconds + '.' + milliseconds + 's';
+    }
+
     return (
       <div className="App">
         <header className="App-header">
           <div className="container">
-            <h1>Round {state.round}</h1>
+            <h1>
+              Round {state.round}
+              <small>{msToTime(state.delay)} delay</small>
+            </h1>
             <Leaderboard leaders={state.robots} />
           </div>
         </header>
@@ -37,7 +51,7 @@ class App extends Component {
 export default connect(props => ({
   fetchState: {
     url: `/state`,
-    refreshInterval: 1000
+    refreshInterval: 250
   }
   // fetchState: {
   //   value: {

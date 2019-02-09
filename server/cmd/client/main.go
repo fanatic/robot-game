@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -22,6 +24,10 @@ type Robot struct {
 	Vision    int       `json:"vision"`
 	Score     int       `json:"score"`
 	Dead      bool      `json:"dead"`
+	InRange   []Robot   `json:"robots_in_range"`
+
+	At  string `json:"at"`
+	Msg string `json:"msg"`
 }
 
 const (
@@ -32,7 +38,11 @@ const (
 )
 
 func main() {
-	resp, err := http.Post("http://localhost:8000/robots", "application/json", strings.NewReader(`{"name": "JP"}`))
+	name := "JP"
+	if len(os.Args) == 2 {
+		name = os.Args[1]
+	}
+	resp, err := http.Post("http://localhost:8000/robots", "application/json", strings.NewReader(`{"name": "`+name+`"}`))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -47,32 +57,40 @@ func main() {
 	defer termbox.Close()
 	termbox.SetInputMode(termbox.InputEsc)
 
+	fmt.Printf("new robot: %+v\n", r)
+
 loop:
 	for {
 		switch ev := termbox.PollEvent(); ev.Type {
 		case termbox.EventKey:
 			switch ev.Key {
 			case termbox.KeyArrowUp:
-				if _, err := http.Post("http://localhost:8000/robots/"+r.ID+"/move", "application/json", nil); err != nil {
+				resp, err := http.Post("http://localhost:8000/robots/"+r.ID+"/move", "application/json", nil)
+				if err != nil {
 					log.Fatal(err)
 				}
-				fmt.Println("move")
+				fmt.Printf("move:       %s\n", Str(resp.Body))
 			case termbox.KeyArrowLeft:
-				if _, err := http.Post("http://localhost:8000/robots/"+r.ID+"/turn", "application/json", strings.NewReader(`{"direction":true}`)); err != nil {
+				resp, err := http.Post("http://localhost:8000/robots/"+r.ID+"/turn", "application/json", strings.NewReader(`{"direction":true}`))
+				if err != nil {
 					log.Fatal(err)
 				}
-				fmt.Println("turn-left")
+				fmt.Printf("turn-left:  %s\n", Str(resp.Body))
 			case termbox.KeyArrowRight:
-				if _, err := http.Post("http://localhost:8000/robots/"+r.ID+"/turn", "application/json", strings.NewReader(`{"direction":false}`)); err != nil {
+				resp, err := http.Post("http://localhost:8000/robots/"+r.ID+"/turn", "application/json", strings.NewReader(`{"direction":false}`))
+				if err != nil {
 					log.Fatal(err)
 				}
-				fmt.Println("turn-right")
+				fmt.Printf("turn-right: %s\n", Str(resp.Body))
 			case termbox.KeySpace:
-				if _, err := http.Post("http://localhost:8000/robots/"+r.ID+"/attack", "application/json", nil); err != nil {
+				resp, err := http.Post("http://localhost:8000/robots/"+r.ID+"/attack", "application/json", nil)
+				if err != nil {
 					log.Fatal(err)
 				}
-				fmt.Println("!")
+				fmt.Printf("attack:     %s\n", Str(resp.Body))
 			case termbox.KeyEsc:
+				break loop
+			case 'q':
 				break loop
 			}
 		case termbox.EventError:
@@ -89,4 +107,15 @@ loop:
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func Str(b io.Reader) string {
+	var r Robot
+	if err := json.NewDecoder(b).Decode(&r); err != nil {
+		return err.Error()
+	}
+	if r.At == "error" {
+		return fmt.Sprintf("error=%s", r.Msg)
+	}
+	return fmt.Sprintf("name=%s x=%d y=%d direction=%d score=%d dead=%t in-range=%v", r.Name, r.X, r.Y, r.Direction, r.Score, r.Dead, r.InRange)
 }
