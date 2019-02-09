@@ -7,8 +7,8 @@ import (
 	"github.com/asdine/storm"
 )
 
-//const initialDelay = 30 * time.Second
-const initialDelay = time.Second
+const actionDelay = 30 * time.Second
+const robotLimit = 1
 
 type State struct {
 	// Saved values
@@ -54,24 +54,8 @@ func (s *State) RefreshState() (*State, error) {
 	state.Grid = 16
 	state.Robots = robots
 	state.db = s.db
-
-	// Calculate delay
-	delay := initialDelay
-	for i := 0; i < state.Round; i++ {
-		delay /= 2
-	}
-	if delay < 2*time.Millisecond {
-		delay = 2 * time.Millisecond
-	}
-	state.CurrentDelay = delay
-
-	// Calculate robot limit
-	state.CurrentRobotLimit = int(state.Round / 2)
-	if state.CurrentRobotLimit <= 0 {
-		state.CurrentRobotLimit = 1
-	} else if state.CurrentRobotLimit > 5 {
-		state.CurrentRobotLimit = 5
-	}
+	state.CurrentDelay = actionDelay
+	state.CurrentRobotLimit = robotLimit
 
 	return &state, nil
 }
