@@ -3,20 +3,26 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/fanatic/robot-game/server"
 )
 
 func main() {
-	s, err := server.NewState("my.db")
+	g, err := server.NewGame("my.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	r, err := server.New(s)
+	r, err := server.New(g)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Fatal(http.ListenAndServe(":8000", r))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8000"
+	}
+
+	log.Fatal(http.ListenAndServe(":"+port, r))
 }

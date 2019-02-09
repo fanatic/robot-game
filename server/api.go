@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -12,9 +11,41 @@ import (
 
 const password = ""
 
+// New returns a new http Handler for the robot game API
+func New(g *Game) (http.Handler, error) {
+	r := mux.NewRouter()
+	r.Use(loggingMiddleware)
+
+	routes := map[string]map[string]f{
+		"GET": {
+			"/state" + password: getState,
+			"/robots/{id}":      getRobot,
+		},
+		"POST": {
+			"/robots":             postRobot,
+			"/robots/{id}/move":   postMove,
+			"/robots/{id}/turn":   postTurn,
+			"/robots/{id}/attack": postAttack,
+		},
+		"DELETE": {
+			"/robots/{id}": deleteRobot,
+		},
+	}
+
+	for method, paths := range routes {
+		for path, f := range paths {
+			r.Methods(method).Path(path).HandlerFunc(handlerWrapper(g, f))
+		}
+	}
+
+	r.PathPrefix("/").Handler(http.FileServer(http.Dir("../client/build")))
+
+	return r, nil
+}
+
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.RequestURI == "/state" && r.Method == "GET" {
+		if r.RequestURI == "/state"+password && r.Method == "GET" {
 			// Skip logging
 			next.ServeHTTP(w, r)
 			return
@@ -28,112 +59,13 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func getState(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	st, err := s.RefreshState()
-	if err != nil {
-		return nil, err
-	}
-	for i := range st.Robots {
-		st.Robots[i].ID = ""
-	}
-	return st, nil
-}
+type f func(g *Game, w http.ResponseWriter, r *http.Request) (interface{}, error)
 
-func postRobot(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	payload := struct {
-		Name string `json:"name"`
-	}{}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("invalid payload body {\"name\": \"JP\"}")
-	}
-
-	robot, err := s.NewRobot(payload.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	return robot, nil
-}
-
-func deleteRobot(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	id := mux.Vars(r)["id"]
-
-	err := s.DeleteRobot(id)
-	if err != nil {
-		return nil, err
-	}
-
-	w.WriteHeader(204)
-	return nil, nil
-}
-
-func getRobot(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	id := mux.Vars(r)["id"]
-
-	robot, err := s.Robot(id)
-	if err != nil {
-		json.NewEncoder(w).Encode(err)
-	}
-	return robot, nil
-}
-
-func postMove(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	id := mux.Vars(r)["id"]
-
-	if err := s.Move(id); err != nil {
-		return nil, err
-	}
-
-	robot, err := s.Robot(id)
-	if err != nil {
-		return nil, err
-	}
-	return robot, nil
-}
-
-func postTurn(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	id := mux.Vars(r)["id"]
-
-	payload := struct {
-		Direction bool `json:"direction"`
-	}{}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("invalid payload body {\"direction\": true}")
-	}
-
-	if err := s.Turn(id, payload.Direction); err != nil {
-		return nil, err
-	}
-
-	robot, err := s.Robot(id)
-	if err != nil {
-		return nil, err
-	}
-	return robot, nil
-}
-
-func postAttack(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error) {
-	id := mux.Vars(r)["id"]
-
-	if err := s.Attack(id); err != nil {
-		return nil, err
-	}
-
-	robot, err := s.Robot(id)
-	if err != nil {
-		return nil, err
-	}
-	return robot, nil
-}
-
-type f func(s *State, w http.ResponseWriter, r *http.Request) (interface{}, error)
-type hf func(w http.ResponseWriter, r *http.Request)
-
-func handlerWrapper(s *State, f f) hf {
+func handlerWrapper(g *Game, f f) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 
-		m, err := f(s, w, r)
+		m, err := f(g, w, r)
 		if err != nil {
 			log.Println(err)
 			json.NewEncoder(w).Encode(map[string]string{"at": "error", "msg": err.Error()})
@@ -147,21 +79,4 @@ func handlerWrapper(s *State, f f) hf {
 			}
 		}
 	}
-}
-
-func New(s *State) (http.Handler, error) {
-	r := mux.NewRouter()
-	r.Use(loggingMiddleware)
-
-	r.HandleFunc("/state"+password, handlerWrapper(s, getState)).Methods("GET")
-	r.HandleFunc("/robots", handlerWrapper(s, postRobot)).Methods("POST")
-	r.HandleFunc("/robots/{id}", handlerWrapper(s, getRobot)).Methods("GET")
-	r.HandleFunc("/robots/{id}/move", handlerWrapper(s, postMove)).Methods("POST")
-	r.HandleFunc("/robots/{id}/turn", handlerWrapper(s, postTurn)).Methods("POST")
-	r.HandleFunc("/robots/{id}/attack", handlerWrapper(s, postAttack)).Methods("POST")
-	r.HandleFunc("/robots/{id}", handlerWrapper(s, deleteRobot)).Methods("DELETE")
-
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("../client/build")))
-
-	return r, nil
 }

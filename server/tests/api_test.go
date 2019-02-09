@@ -10,7 +10,13 @@ func TestAPI(t *testing.T) {
 
 	t.Run("basic client", func(t *testing.T) {
 		assertResponse(t, GET(t, "/state"),
-			`{"grid": 16, "robots": [], "round": 0}`, 200)
+			`{
+				"grid": 16,
+				"robots": [],
+				"round": 0,
+				"delay": 30000000,
+				"robot_limit": 1
+				}`, 200)
 
 		id := assertResponse(t, POST(t, "/robots", `{"name": "JP"}`),
 			`{
@@ -21,7 +27,8 @@ func TestAPI(t *testing.T) {
 				"name":"JP", 
 				"color":"#e6194b", 
 				"direction":3, 
-				"vision":4
+				"vision":4,
+				"robots_in_range": []
 			}`, 200)
 
 		assertResponse(t, GET(t, "/state"),
@@ -35,9 +42,12 @@ func TestAPI(t *testing.T) {
 					"name":"JP", 
 					"color":"#e6194b", 
 					"direction":3, 
-					"vision":4
+					"vision":4,
+					"robots_in_range": null
 				}], 
-				"round": 0
+				"round": 0,
+				"delay": 30000000,
+				"robot_limit": 1
 			}`, 200)
 
 		assertResponse(t, GET(t, "/robots/"+id),
@@ -49,7 +59,8 @@ func TestAPI(t *testing.T) {
 				"name":"JP", 
 				"color":"#e6194b", 
 				"direction":3, 
-				"vision":4
+				"vision":4,
+				"robots_in_range": []
 			}`, 200)
 
 		assertResponse(t, POST(t, "/robots/"+id+"/move", ``),
@@ -61,7 +72,8 @@ func TestAPI(t *testing.T) {
 				"name":"JP", 
 				"color":"#e6194b", 
 				"direction":3, 
-				"vision":4
+				"vision":4,
+				"robots_in_range": []
 			}`, 200)
 
 		assertResponse(t, POST(t, "/robots/"+id+"/turn", `{"direction": false}`),
@@ -73,7 +85,8 @@ func TestAPI(t *testing.T) {
 				"name":"JP", 
 				"color":"#e6194b", 
 				"direction":0, 
-				"vision":4
+				"vision":4,
+				"robots_in_range": []
 			}`, 200)
 
 		assertResponse(t, POST(t, "/robots/"+id+"/move", ``),
@@ -85,7 +98,8 @@ func TestAPI(t *testing.T) {
 				"name":"JP", 
 				"color":"#e6194b", 
 				"direction":0, 
-				"vision":4
+				"vision":4,
+				"robots_in_range": []
 			}`, 200)
 
 		assertResponse(t, POST(t, "/robots/"+id+"/attack", ``),

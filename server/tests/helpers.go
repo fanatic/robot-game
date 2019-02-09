@@ -18,20 +18,20 @@ import (
 )
 
 var TestRouter http.Handler
-var TestState *server.State
+var TestGame *server.Game
 
 func setup(t *testing.T) {
 	var err error
 
-	TestState, err = server.NewState("unit-test-api.db")
+	TestGame, err = server.NewGame("unit-test-api.db")
 	require.NoError(t, err)
 
-	TestRouter, err = server.New(TestState)
+	TestRouter, err = server.New(TestGame)
 	require.NoError(t, err)
 }
 
 func teardown() {
-	TestState.Close()
+	TestGame.Close()
 	os.Remove("unit-test-api.db")
 }
 
